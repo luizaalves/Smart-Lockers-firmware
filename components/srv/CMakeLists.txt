@@ -1,6 +1,6 @@
-idf_component_register(SRCS "src/srv_wifi.c" "src/srv_mqtt.c" "src/srv_led.c" "src/srv_communication.c"
+idf_component_register(SRCS "src/srv_wifi.c" "src/srv_mqtt.c" "src/srv_led.c" "src/srv_communication.c" "src/srv_rfid.c"
                     INCLUDE_DIRS "inc"
-                    PRIV_REQUIRES drv)
+                    PRIV_REQUIRES drv rc522)
 
 target_include_directories(${COMPONENT_LIB} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -11,4 +11,5 @@ target_include_directories(${COMPONENT_LIB} PRIVATE
     ${IDF_PATH}/components/esp_partition/include
     ${IDF_PATH}/components/mqtt/esp-mqtt/include
     ${IDF_PATH}/components/tcp_transport/include
+    ../rc522/include
 )
