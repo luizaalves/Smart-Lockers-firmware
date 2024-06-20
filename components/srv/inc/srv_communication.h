@@ -4,9 +4,6 @@
 extern "C" {
 #endif
 
-#include "srv_mqtt.h"
-#include "srv_wifi.h"
-
 #define APP_WIFI_SSID "VIVOFIBRA-8F61"
 #define APP_WIFI_PASSWORD "PvKjTrq4yk"
 #define APP_WIFI_MODE DRV_WIFI_MODE_STA

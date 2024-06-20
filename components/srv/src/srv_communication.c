@@ -1,10 +1,15 @@
 #include "srv_communication.h"
+
+#include "srv_mqtt.h"
+#include "srv_wifi.h"
+#include "srv_rfid.h"
 #include "esp_log.h"
 
 static const char *TAG = "SRV_COMM";
 
 static void handler_on_sta_got_ip(void *arg, const char* event_base, int32_t event_id, void *event_data);
 static void mqtt_event_handler(void *handler_args, const char* base, int32_t event_id, void *event_data);
+static void rfid_handler(void* arg, esp_event_base_t base, int32_t event_id, void* event_data);
 
 void srv_comm_init(void)
 {
@@ -16,10 +21,21 @@ void srv_comm_init(void)
         .interface = APP_WIFI_INTERFACE,
         .interface_description = APP_WIFI_IF_DESC
     };
+
+    rfid_config_st rfid_config = 
+    {
+        .host = VSPI_HOST,
+        .miso = 25,
+        .mosi = 23,
+        .sck = 19,
+        .sda = 22
+    };
     
     if(srv_wifi_start(config) != DRV_WIFI_OK) return;
     srv_wifi_connect();
     srv_wifi_set_callback(handler_on_sta_got_ip, APP_EVENT_IP_STA);
+    srv_rfid_start(rfid_config);
+    srv_rfid_set_callback(rfid_handler);
     return;
 }
 
@@ -68,3 +84,21 @@ static void mqtt_event_handler(void *handler_args, const char* base, int32_t eve
             break;
     }
 } 
+
+static void rfid_handler(void* arg, esp_event_base_t base, int32_t event_id, void* event_data)
+{
+    rc522_event_data_t* data = (rc522_event_data_t*) event_data;
+
+    switch(event_id) {
+        case RC522_EVENT_TAG_SCANNED: {
+                rc522_tag_t* tag = (rc522_tag_t*) data->ptr;
+                ESP_LOGI(TAG, "Tag scanned (sn: %" PRIu64 ")", tag->serial_number);
+                //manda pro mqtt
+                char str[21];
+                snprintf(str, sizeof(str), "%llu", (unsigned long long)tag->serial_number); 
+                //int msg_id = esp_mqtt_client_publish(client, "/topic/qos0", str, sizeof(str), 0,0);
+                //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d; value: %s", msg_id, str);
+            }
+            break;
+    }
+}
