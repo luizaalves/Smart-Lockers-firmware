@@ -1,4 +1,4 @@
-idf_component_register(SRCS "src/srv_wifi.c" "src/srv_led.c" 
+idf_component_register(SRCS "src/srv_wifi.c" "src/srv_mqtt.c" "src/srv_led.c" "src/srv_communication.c"
                     INCLUDE_DIRS "inc"
                     PRIV_REQUIRES drv)
 
@@ -9,4 +9,6 @@ target_include_directories(${COMPONENT_LIB} PRIVATE
     ${IDF_PATH}/components/esp_netif/include
     ${IDF_PATH}/components/nvs_flash/include
     ${IDF_PATH}/components/esp_partition/include
+    ${IDF_PATH}/components/mqtt/esp-mqtt/include
+    ${IDF_PATH}/components/tcp_transport/include
 )
