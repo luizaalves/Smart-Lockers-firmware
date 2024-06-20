@@ -1,0 +1,3 @@
+[submodule "components/rc522"]
+	path = components/rc522
+	url = https://github.com/abobija/esp-idf-rc522.git
