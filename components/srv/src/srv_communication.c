@@ -3,7 +3,10 @@
 #include "srv_mqtt.h"
 #include "srv_wifi.h"
 #include "srv_rfid.h"
+#include "drv_nvs.h"
 #include "esp_log.h"
+#include "drv_nvs.h"
+#include "srv_button.h"
 
 static const char *TAG = "SRV_COMM";
 
@@ -13,13 +16,25 @@ static void rfid_handler(void* arg, esp_event_base_t base, int32_t event_id, voi
 
 void srv_comm_init(void)
 {
-        wifi_config_st config = 
-        {
-        .ssid = APP_WIFI_SSID,
-        .password = APP_WIFI_PASSWORD,
-        .mode = APP_WIFI_MODE,
-        .interface = APP_WIFI_INTERFACE,
-        .interface_description = APP_WIFI_IF_DESC
+    drv_nvs_init();
+    srv_button_init();
+    char *ssid=malloc(32);
+    char *password=malloc(32);
+    size_t len_ssid;
+    size_t len_pass;
+
+    drv_nvs_err_et err = drv_nvs_get("storage", WIFI_SSID_KEY, ssid, &len_ssid);
+    if(err != DRV_NVS_OK) return;
+    err = drv_nvs_get("storage", WIFI_PASS_KEY, password, &len_pass);
+    if(err != DRV_NVS_OK) return;
+
+    wifi_config_st config = 
+    {
+    .ssid = ssid,
+    .password = password,
+    .mode = APP_WIFI_MODE,
+    .interface = APP_WIFI_INTERFACE,
+    .interface_description = APP_WIFI_IF_DESC
     };
 
     rfid_config_st rfid_config = 
@@ -31,11 +46,13 @@ void srv_comm_init(void)
         .sda = 22
     };
     
-    if(srv_wifi_start(config) != DRV_WIFI_OK) return;
+    if(srv_wifi_start(&config) != DRV_WIFI_OK) return;
     srv_wifi_connect();
     srv_wifi_set_callback(handler_on_sta_got_ip, APP_EVENT_IP_STA);
     srv_rfid_start(rfid_config);
     srv_rfid_set_callback(rfid_handler);
+    free(ssid);
+    free(password);
     return;
 }
 
@@ -44,7 +61,7 @@ static void handler_on_sta_got_ip(void *arg, const char* event_base, int32_t eve
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(TAG, "Got IPv4 event: Interface \"%s\" address: " IPSTR, esp_netif_get_desc(event->esp_netif), IP2STR(&event->ip_info.ip));
     ESP_LOGI(TAG, "- IPv4 address: " IPSTR ",", IP2STR(&event->ip_info.ip));
-    srv_mqtt_start("mqtt://192.168.15.7:1883");
+    srv_mqtt_start("mqtt://192.168.1.7:1883");
     srv_mqtt_set_callback(mqtt_event_handler);
 }
 
@@ -96,8 +113,8 @@ static void rfid_handler(void* arg, esp_event_base_t base, int32_t event_id, voi
                 //manda pro mqtt
                 char str[21];
                 snprintf(str, sizeof(str), "%llu", (unsigned long long)tag->serial_number); 
-                //int msg_id = esp_mqtt_client_publish(client, "/topic/qos0", str, sizeof(str), 0,0);
-                //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d; value: %s", msg_id, str);
+                int msg_id = esp_mqtt_client_publish(srv_mqtt_get_client(), "/door_command/request", str, sizeof(str), 0,0);
+                ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d; value: %s", msg_id, str);
             }
             break;
     }

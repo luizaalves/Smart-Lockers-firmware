@@ -8,4 +8,5 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "HELLO WORLD");
     srv_comm_init();
+    // srv_comm_config_wifi();
 }

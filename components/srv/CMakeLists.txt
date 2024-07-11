@@ -1,4 +1,4 @@
-idf_component_register(SRCS "src/srv_wifi.c" "src/srv_mqtt.c" "src/srv_led.c" "src/srv_communication.c" "src/srv_rfid.c"
+idf_component_register(SRCS "src/srv_wifi.c" "src/srv_mqtt.c" "src/srv_led.c" "src/srv_communication.c" "src/srv_rfid.c" "src/srv_button.c"
                     INCLUDE_DIRS "inc"
                     PRIV_REQUIRES drv rc522)
 
@@ -11,5 +11,6 @@ target_include_directories(${COMPONENT_LIB} PRIVATE
     ${IDF_PATH}/components/esp_partition/include
     ${IDF_PATH}/components/mqtt/esp-mqtt/include
     ${IDF_PATH}/components/tcp_transport/include
+    ${IDF_PATH}/components/freertos/
     ../rc522/include
 )

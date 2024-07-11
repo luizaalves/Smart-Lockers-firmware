@@ -54,6 +54,10 @@ mqtt_err_et drv_mqtt_start(void);
  */
 void drv_mqtt_set_callback(mqtt_event_handler_t handler);
 
+esp_mqtt_client_handle_t drv_mqtt_get_client(void);
+
+void drv_mqtt_stop(void);
+
 //void drv_mqtt_publish(const char *topic, const char *data, int len, int qos, int retain);
 
 //void drv_mqtt_subscribe(const char *topic, int qos);

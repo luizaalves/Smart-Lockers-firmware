@@ -35,7 +35,8 @@ typedef enum
 
 typedef enum
 {
-    DRV_WIFI_IP_STA = IP_EVENT_STA_GOT_IP
+    DRV_WIFI_IP_STA = IP_EVENT_STA_GOT_IP,
+    DRV_WIFI_IP_AP = ESP_EVENT_ANY_ID
 } wifi_event_et;
 
 typedef struct 
@@ -62,17 +63,9 @@ typedef void (*wifi_event_handler_t)(void* event_handler_arg,
  *                            DRV_WIFI_ERR_START    if wi-fi start fails or
  *                            DRV_WIFI_OK           if succeed
  */
-wifi_err_et drv_wifi_init(wifi_config_st wifi_config);
+wifi_err_et drv_wifi_init(wifi_config_st *wifi_config_pt);
+wifi_err_et drv_wifi_open_ap(wifi_config_st config);
 
-/**
- * @brief Starts wi-fi
- * 
- * @return wifi_err_et Return DRV_WIFI_ERR_INIT     if wi-fi to started,
- *                            DRV_WIFI_ERR_START    if wi-fi start fails,
- *                            DRV_WIFI_ERR_CONFIG   if wi-fi set config fails or
- *                            DRV_WIFI_OK           if succeed
- */
-wifi_err_et drv_wifi_start(void);
 
 /**
  * @brief Connect wi-fi
@@ -90,6 +83,8 @@ wifi_err_et drv_wifi_connect(void);
  * @param handler – the handler function which gets called when the event is dispatched
  */
 void drv_wifi_set_callback(wifi_event_et evt_id, wifi_event_handler_t handler);
+
+void drv_wifi_stop(void);
 
 #ifdef __cplusplus
 }

@@ -20,7 +20,7 @@ void srv_wifi_set_callback(wifi_event_handler_t handler, wifi_event_et event_id)
  * @param config 
  * @return wifi_err_et 
  */
-wifi_err_et srv_wifi_start(wifi_config_st config);
+wifi_err_et srv_wifi_start(wifi_config_st *config);
 
 /**
  * @brief 
@@ -28,6 +28,8 @@ wifi_err_et srv_wifi_start(wifi_config_st config);
  * @return wifi_err_et 
  */
 wifi_err_et srv_wifi_connect(void);
+
+void srv_wifi_stop(void);
 
 #ifdef __cplusplus
 }

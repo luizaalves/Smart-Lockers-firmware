@@ -44,3 +44,33 @@ void drv_mqtt_set_callback(mqtt_event_handler_t handler)
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, handler, client);
 }
 
+
+esp_mqtt_client_handle_t drv_mqtt_get_client(void)
+{
+    return client;
+}
+
+void drv_mqtt_stop(void) 
+{
+    if (client != NULL) {
+        ESP_LOGI(TAG, "Stopping MQTT client");
+
+        // Para o cliente MQTT
+        esp_err_t err = esp_mqtt_client_stop(client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to stop MQTT client: %s", esp_err_to_name(err));
+        }
+
+        // Destrói o cliente MQTT para liberar recursos
+        err = esp_mqtt_client_destroy(client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to destroy MQTT client: %s", esp_err_to_name(err));
+        } else {
+            client = NULL; // Defina o ponteiro como NULL para evitar referências futuras
+        }
+
+        ESP_LOGI(TAG, "MQTT client stopped");
+    } else {
+        ESP_LOGW(TAG, "MQTT client is not initialized or already stopped");
+    }
+}

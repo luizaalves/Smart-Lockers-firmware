@@ -21,6 +21,10 @@ void srv_mqtt_set_callback(mqtt_event_handler_t handler);
  */
 mqtt_err_et srv_mqtt_start(const char *uri);
 
+esp_mqtt_client_handle_t srv_mqtt_get_client(void);
+
+void srv_mqtt_stop(void);
+
 #ifdef __cplusplus
 }
 #endif
