@@ -10,6 +10,7 @@
 QueueHandle_t button_queue= NULL;
 static int flag = 0;
 static const char *TAG = "srv_button";
+TaskHandle_t button_handle=NULL;
 
 static void IRAM_ATTR button_isr_handler(void* arg);
 static void button_task(void *arg);
@@ -18,36 +19,59 @@ static void handler_on_ap_got_ip(void *arg, const char* event_base, int32_t even
 
 void srv_button_init(void)
 {
-    drv_gpio_config_st config = 
-    {
-        .gpio_num = APP_BUTTON_GPIO,
-        .gpio_mode = GPIO_MODE_INPUT,
-        .gpio_intr_type = GPIO_INTR_NEGEDGE,
-        .handler = button_isr_handler,
-    };
-
-    drv_gpio_config(&config);
+    drv_gpio_set_direction(APP_BUTTON_GPIO, GPIO_MODE_INPUT);
+    drv_gpio_set_intr_type(APP_BUTTON_GPIO, GPIO_INTR_NEGEDGE);
+    drv_gpio_isr_handler_add(APP_BUTTON_GPIO, button_isr_handler);
     if(button_queue == NULL) button_queue = xQueueCreate(10, sizeof(int));
     if(button_queue == NULL)
     {
         ESP_LOGE(TAG, "Failed to create queue");
         return;
     }
-    xTaskCreate(button_task, "button_task", 1024*5, NULL, 10, NULL);
 
 }
 
+#define DEBOUNCE_DELAY_MS 50 
+
+static uint32_t last_interrupt_time = 0;
+
 static void IRAM_ATTR button_isr_handler(void* arg) 
 {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    int button_event=1;
-    xQueueSendFromISR(button_queue, &button_event, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    int32_t gpio_num = (uint32_t) arg;
+    if(gpio_num == APP_BUTTON_GPIO)
+    {
+        uint32_t interrupt_time = xTaskGetTickCountFromISR();
+        // ESP_DRAM_LOGI(TAG, ">> %lu, %lu", interrupt_time, last_interrupt_time);
+
+        if(last_interrupt_time==0) 
+        {
+
+            last_interrupt_time = interrupt_time;
+        }
+
+        if ((interrupt_time - last_interrupt_time) > pdMS_TO_TICKS(DEBOUNCE_DELAY_MS)) 
+        {
+
+            last_interrupt_time = 0;
+            // ESP_DRAM_LOGI(TAG, "ENTROU: %lu, %lu", interrupt_time, last_interrupt_time);
+            if(button_handle==NULL) xTaskCreate(button_task, "button_task", 1024*5, NULL, 10, &button_handle);
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            int button_event=1;
+            xQueueSendFromISR(button_queue, &button_event, &xHigherPriorityTaskWoken);
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+        }
+        else 
+        {
+            // ESP_DRAM_LOGI(TAG, "NAO ENTROU");
+            last_interrupt_time = 0;
+        }
+    }
 }
 
 static void button_task(void *arg)
 {
     int button_event;
+
     for(;;)
     {
         // Wait for the event from the ISR
@@ -64,6 +88,7 @@ static void button_task(void *arg)
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+    vTaskDelete(NULL);
 }
 
 static void config_wifi_ap(void)
