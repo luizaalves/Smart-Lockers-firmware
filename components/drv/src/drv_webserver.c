@@ -50,7 +50,7 @@ void drv_webserver_stop(httpd_handle_t server)
 
 static esp_err_t config_post_handler(httpd_req_t *req)
 {
-    char buf[100];
+    char buf[512];
     int ret=0, remaining = req->content_len;
      ESP_LOGE(TAG, "content_len: %u", req->content_len);
     while (remaining > 0)
@@ -72,16 +72,26 @@ static esp_err_t config_post_handler(httpd_req_t *req)
     char ssid_decode[32] = {0};
     char password[64] = {0};
     char password_decode[64] = {0};
+    char locker_name[20] = {0};
+    char locker_name_decode[20] = {0};
+    char num_compartments_str[4] = {0};
+    uint8_t num_compartments = 0;
 
     httpd_query_key_value(buf, "ssid", ssid, sizeof(ssid));
     httpd_query_key_value(buf, "password", password, sizeof(password));
+    httpd_query_key_value(buf, "locker_name", locker_name, sizeof(locker_name));
+    httpd_query_key_value(buf, "num_compartments", num_compartments_str, sizeof(num_compartments_str));
+    ESP_LOGI(TAG, "num compart str: %s", num_compartments_str);
 
     url_decode(ssid_decode, ssid);
     url_decode(password_decode, password);
+    url_decode(locker_name_decode, locker_name);
+    num_compartments = (uint8_t)atoi(num_compartments_str);
 
-
-    drv_nvs_set("storage", WIFI_SSID_KEY, ssid_decode);
-    drv_nvs_set("storage", WIFI_PASS_KEY, password_decode);
+    drv_nvs_set_str("storage", WIFI_SSID_KEY, ssid_decode);
+    drv_nvs_set_str("storage", WIFI_PASS_KEY, password_decode);
+    if(strlen(locker_name)>0) drv_nvs_set_str("storage", LOCKER_NAME_KEY, locker_name_decode);
+    if(num_compartments > 0) drv_nvs_set_u8("storage", LOCKER_NUM_KEY, num_compartments);
 
     httpd_resp_send(req, "Configuration Saved", HTTPD_RESP_USE_STRLEN);
     esp_restart();
@@ -92,21 +102,45 @@ static esp_err_t config_get_handler(httpd_req_t *req)
 {
     char ssid[32] = "";
     char password[64] = "";
+    char locker_name[20] = "";
+    uint8_t num_compartments = 0;
     size_t ssid_len = sizeof(ssid);
     size_t password_len = sizeof(password);
+    size_t locker_name_len = sizeof(locker_name);
     
-    drv_nvs_get("storage", WIFI_SSID_KEY, ssid, &ssid_len);
-    drv_nvs_get("storage", WIFI_PASS_KEY, password, &password_len);
+    drv_nvs_get_str("storage", WIFI_SSID_KEY, ssid, &ssid_len);
+    drv_nvs_get_str("storage", WIFI_PASS_KEY, password, &password_len);
+    drv_nvs_get_str("storage", LOCKER_NAME_KEY, locker_name, &locker_name_len);
+    drv_nvs_get_u8("storage", LOCKER_NUM_KEY, &num_compartments);
 
-    char resp[512];
-    snprintf(resp, sizeof(resp),
-             "<!DOCTYPE html><html><body>"
-             "<form action=\"/config\" method=\"post\">"
-             "SSID: <input type=\"text\" name=\"ssid\" value=\"%s\"><br>"
-             "Password: <input type=\"text\" name=\"password\" value=\"%s\"><br>"
-             "<input type=\"submit\" value=\"Save\">"
-             "</form></body></html>", ssid, password);
 
+    char resp[1024];
+    int offset = snprintf(resp, sizeof(resp),
+                        "<!DOCTYPE html><html><body>"
+                        "<form action=\"/config\" method=\"post\">"
+                        "SSID: <input type=\"text\" name=\"ssid\" value=\"%s\"><br>"
+                        "Password: <input type=\"text\" name=\"password\" value=\"%s\"><br>"
+                        "<input type=\"submit\" value=\"Save\">",
+                        ssid, password);
+
+    if (strlen(locker_name) <= 0) {
+        ESP_LOGI(TAG, "Locker name: %s", locker_name);
+        offset += snprintf(resp + offset, sizeof(resp) - offset,
+                        "Locker Name: <input type=\"text\" name=\"locker_name\" value=\"%s\"><br>",
+                        locker_name);
+    }
+
+    if (num_compartments <= 0) {
+        ESP_LOGI(TAG, "Num compartments: %u", num_compartments);
+        offset += snprintf(resp + offset, sizeof(resp) - offset,
+                        "Número de Compartimentos: <input type=\"number\" name=\"num_compartments\" value=\"%d\"><br>",
+                        num_compartments);
+    }
+    if ((num_compartments <= 0)||(strlen(locker_name) <= 0)) {
+    snprintf(resp + offset, sizeof(resp) - offset,
+         "<button type=\"submit\">Enviar</button>"
+         "</form></body></html>");
+    }
     httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
