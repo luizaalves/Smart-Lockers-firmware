@@ -74,3 +74,14 @@ void drv_mqtt_stop(void)
         ESP_LOGW(TAG, "MQTT client is not initialized or already stopped");
     }
 }
+
+int drv_mqtt_subscribe(char *topic, int qos)
+{
+    return esp_mqtt_client_subscribe(client, topic, qos);
+
+}
+int drv_mqtt_publish(char *topic, const char *data, int len)
+{
+    return esp_mqtt_client_publish(client, topic, data, len, 2,0);
+
+}

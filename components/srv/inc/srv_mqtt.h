@@ -25,6 +25,10 @@ esp_mqtt_client_handle_t srv_mqtt_get_client(void);
 
 void srv_mqtt_stop(void);
 
+int srv_mqtt_subscribe(char *topic, int qos);
+
+int srv_mqtt_publish(char *topic, const char *data, int len);
+
 #ifdef __cplusplus
 }
 #endif

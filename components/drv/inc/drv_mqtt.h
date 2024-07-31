@@ -58,9 +58,9 @@ esp_mqtt_client_handle_t drv_mqtt_get_client(void);
 
 void drv_mqtt_stop(void);
 
-//void drv_mqtt_publish(const char *topic, const char *data, int len, int qos, int retain);
+int drv_mqtt_publish(char *topic, const char *data, int len);
 
-//void drv_mqtt_subscribe(const char *topic, int qos);
+int drv_mqtt_subscribe(char *topic, int qos);
 
 //void drv_mqtt_disconnect(void);
 
