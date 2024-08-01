@@ -20,7 +20,7 @@ static void handler_on_ap_got_ip(void *arg, const char* event_base, int32_t even
 void srv_button_init(void)
 {
     drv_gpio_set_direction(APP_BUTTON_GPIO, GPIO_MODE_INPUT);
-    drv_gpio_set_intr_type(APP_BUTTON_GPIO, GPIO_INTR_NEGEDGE);
+    drv_gpio_set_intr_type(APP_BUTTON_GPIO, GPIO_INTR_ANYEDGE);
     drv_gpio_isr_handler_add(APP_BUTTON_GPIO, button_isr_handler);
     if(button_queue == NULL) button_queue = xQueueCreate(10, sizeof(int));
     if(button_queue == NULL)
@@ -31,40 +31,29 @@ void srv_button_init(void)
 
 }
 
-#define DEBOUNCE_DELAY_MS 50 
+#include "time.h"
 
-static uint32_t last_interrupt_time = 0;
+#define DEBOUNCE_DELAY_MS 10 
+uint8_t first_intr = 2;
+unsigned long timestamp_ultimo_acionamento = 0;
 
 static void IRAM_ATTR button_isr_handler(void* arg) 
 {
-    int32_t gpio_num = (uint32_t) arg;
-    if(gpio_num == APP_BUTTON_GPIO)
+    if(first_intr == 2 && drv_gpio_get_level(APP_BUTTON_GPIO)==0) first_intr = 0;
+    else if(first_intr ==0 && drv_gpio_get_level(APP_BUTTON_GPIO))
     {
-        uint32_t interrupt_time = xTaskGetTickCountFromISR();
-        // ESP_DRAM_LOGI(TAG, ">> %lu, %lu", interrupt_time, last_interrupt_time);
-
-        if(last_interrupt_time==0) 
+        unsigned long timestamp = clock();
+        if(((timestamp - timestamp_ultimo_acionamento)/CLOCKS_PER_SEC) >= DEBOUNCE_DELAY_MS)
         {
-
-            last_interrupt_time = interrupt_time;
-        }
-
-        if ((interrupt_time - last_interrupt_time) > pdMS_TO_TICKS(DEBOUNCE_DELAY_MS)) 
-        {
-
-            last_interrupt_time = 0;
-            // ESP_DRAM_LOGI(TAG, "ENTROU: %lu, %lu", interrupt_time, last_interrupt_time);
+            timestamp_ultimo_acionamento = 0;
+            first_intr = 2;
             if(button_handle==NULL) xTaskCreate(button_task, "button_task", 1024*5, NULL, 10, &button_handle);
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
             int button_event=1;
             xQueueSendFromISR(button_queue, &button_event, &xHigherPriorityTaskWoken);
             portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
         }
-        else 
-        {
-            // ESP_DRAM_LOGI(TAG, "NAO ENTROU");
-            last_interrupt_time = 0;
-        }
+        
     }
 }
 
