@@ -11,10 +11,12 @@
 #include <stdio.h>
 #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
+#include "srv_hmi.h"
 
 static const char *TAG = "SRV_COMM";
 
 static TaskHandle_t door_handle=NULL;
+hmi_cb led_cb = handler_hmi;
 rc522_tag_t *tag = {0};
 
 static void handler_on_sta_got_ip(void *arg, const char* event_base, int32_t event_id, void *event_data);
@@ -24,12 +26,13 @@ static void open_door(void *arg);
 static uint8_t check_num_from_gpio(uint8_t num);
 static uint8_t check_num_from_db(uint8_t num);
 static uint8_t check_sensor_from_num(uint8_t num);
-static void split_data(const char* data, uint8_t* num, char* locker_name, char *tag_rfid) ;
+static void split_data(const char* data, int* num, char* locker_name, char *tag_rfid) ;
 
 void srv_comm_init(void)
 {
     drv_nvs_init();
     srv_button_init();
+    srv_hmi_init();
     char *ssid=malloc(32);
     char *password=malloc(32);
     size_t len_ssid;
@@ -73,6 +76,8 @@ void srv_comm_init(void)
     // drv_gpio_set_pull(39);
     drv_gpio_set_direction(36, GPIO_MODE_INPUT);
     // drv_gpio_set_pull(36);
+    led_cb(SRV_LED_FREE_TO_USE,0);
+    led_cb(SRV_LED_NO_FREE_DOORS,1);
     return;
 }
 
@@ -96,10 +101,17 @@ static void mqtt_event_handler(void *handler_args, const char* base, int32_t eve
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
             int response = srv_mqtt_subscribe("/door_command/response", 2);
+            //liga led "ja da pra usar"
+            led_cb(SRV_LED_FREE_TO_USE,1);
+            led_cb(SRV_LED_NO_FREE_DOORS,0);
+
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
-            
+            //liga led "nao da pra usar!!!"
+            led_cb(SRV_LED_FREE_TO_USE,0);
+            led_cb(SRV_LED_NO_FREE_DOORS,1);
+
             break;
         case MQTT_EVENT_SUBSCRIBED:
             ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
@@ -116,7 +128,7 @@ static void mqtt_event_handler(void *handler_args, const char* base, int32_t eve
             printf("DATA=%.*s\r\n", event->data_len, event->data);
             if(strcmp(event->topic,"/door_command/response")==0)
             {
-                uint8_t compartment = 0;
+                int compartment = 0;
                 char locker_name_received[20];
                 char tag_received[20]="";
                 char locker_name[20] = "";
@@ -125,6 +137,28 @@ static void mqtt_event_handler(void *handler_args, const char* base, int32_t eve
                 drv_nvs_get_str("storage", LOCKER_NAME_KEY, locker_name, &locker_name_len);
 
                 split_data(event->data, &compartment, locker_name_received, &tag_received);
+                ESP_LOGI(TAG, "NUM: %d", compartment);
+
+                if(compartment == 0)
+                {
+                    // led_cb(SRV_LED_STORE_OBJ,0);
+                    led_cb(SRV_LED_TAG_NOT_FOUND_IN_DB,1);
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    led_cb(SRV_LED_TAG_NOT_FOUND_IN_DB,0);
+                    led_cb(SRV_LED_FREE_TO_USE,1);
+                    led_cb(SRV_LED_WAITING_ANSWER,0);
+                    return;
+                }
+                else if(compartment == -1)
+                {
+                    led_cb(SRV_LED_FREE_TO_USE,0);
+                    led_cb(SRV_LED_WAITING_ANSWER,0);
+                    led_cb(SRV_LED_NO_FREE_DOORS,1);
+                    led_cb(SRV_LED_STORE_OBJ,0);
+
+                    
+                    return;
+                }
                 char str[20];
                 sprintf(str, "%llu", tag->serial_number);
                 tag_received[strlen(str)] = '\0';
@@ -150,6 +184,7 @@ static void rfid_handler(void* arg, esp_event_base_t base, int32_t event_id, voi
 
     switch(event_id) {
         case RC522_EVENT_TAG_SCANNED: {
+            //liga led "tao usando, pera ai"
                 tag = (rc522_tag_t*) data->ptr;
                 ESP_LOGI(TAG, "Tag scanned (sn: %" PRIu64 ")", tag->serial_number);
                 //manda pro mqtt
@@ -162,6 +197,9 @@ static void rfid_handler(void* arg, esp_event_base_t base, int32_t event_id, voi
                 
                 snprintf(str, sizeof(str), "%llu:%s:%u",(unsigned long long)tag->serial_number, locker_name, num_compartments); 
                 int msg_id = srv_mqtt_publish("/door_command/request", str, strlen(str));
+                led_cb(SRV_LED_FREE_TO_USE,0);
+                led_cb(SRV_LED_NO_FREE_DOORS,0);
+                led_cb(SRV_LED_WAITING_ANSWER,1);
                 ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d; value: %s", msg_id, str);
                 vTaskDelay(pdMS_TO_TICKS(1000));
             }
@@ -207,6 +245,8 @@ static void open_door(void *arg)
     //verifica de qual gpio esse compartimento esta associado 15
     //destrava tal gpio na condição imã fechado
     drv_gpio_set_level(compartment, 1);
+    led_cb(SRV_LED_TAG_NOT_FOUND_IN_DB,0);
+
     for(;;)
     {
         if(state == STATE_WAIT_DOOR_OPEN)
@@ -242,6 +282,13 @@ static void open_door(void *arg)
                 ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d; value: %s", msg_id, str);
 
                 tag = NULL;
+                //liga led "liberou pra usar"
+                led_cb(SRV_LED_WAITING_ANSWER,0);
+                led_cb(SRV_LED_NO_FREE_DOORS,0);
+                led_cb(SRV_LED_FREE_TO_USE,1);
+                led_cb(SRV_LED_REMOVE_OBJ,0);
+                led_cb(SRV_LED_STORE_OBJ,0);
+
                 vTaskDelete(NULL);
 
             }
@@ -257,7 +304,7 @@ static void open_door(void *arg)
     vTaskDelete(NULL);
 }
 
-static void split_data(const char* data, uint8_t* num, char* locker_name, char *tag_rfid) 
+static void split_data(const char* data, int* num, char* locker_name, char *tag_rfid) 
 {
     // Use a cópia da string para preservá-la, pois strtok modifica a string original.
     char data_copy[50];
@@ -266,19 +313,41 @@ static void split_data(const char* data, uint8_t* num, char* locker_name, char *
     // Use strtok para dividir a string
     char* token = strtok(data_copy, ":");
     
-    if (token != NULL) {
+    if (token != NULL) 
+    {
         // Primeiro valor: num (uint8_t)
-        *num = (uint8_t)atoi(token);
+        *num = (int)atoi(token);
         
         // Segundo valor: locker_name (string)
         token = strtok(NULL, ":");
-        if (token != NULL) {
+        if (token != NULL) 
+        {
             strcpy(locker_name, token);
             
             // Terceiro valor: tag_rfid (string)
             token = strtok(NULL, ":");
-            if (token != NULL) {
+            if (token != NULL) 
+            {
                 strcpy(tag_rfid, token);
+            }
+            token = strtok(NULL, ":");
+            if (token != NULL) 
+            {
+                char led[6];
+                strcpy(led, token);
+                // ESP_LOGI(TAG, "LED: %d - %d", (int)strcmp(led, "store"), (int)strcmp(led, "remove"));
+
+                if(strcmp(led, "store")>=0) 
+                {
+                    ESP_LOGI(TAG, "STORE");
+                    led_cb(SRV_LED_STORE_OBJ, 1);
+                }
+                else if(strcmp(led, "remove")>=0) 
+                {
+                    ESP_LOGI(TAG, "REMOVE");
+    
+                    led_cb(SRV_LED_REMOVE_OBJ, 1);
+                }
             }
         }
     }

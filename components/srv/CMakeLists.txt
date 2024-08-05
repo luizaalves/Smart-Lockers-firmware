@@ -1,4 +1,4 @@
-idf_component_register(SRCS "src/srv_wifi.c" "src/srv_mqtt.c" "src/srv_led.c" "src/srv_communication.c" "src/srv_rfid.c" "src/srv_button.c"
+idf_component_register(SRCS "src/srv_wifi.c" "src/srv_mqtt.c" "src/srv_led.c" "src/srv_communication.c" "src/srv_rfid.c" "src/srv_button.c" "src/srv_hmi.c"
                     INCLUDE_DIRS "inc"
                     PRIV_REQUIRES drv rc522)
 
