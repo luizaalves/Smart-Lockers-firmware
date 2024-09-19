@@ -22,6 +22,7 @@ void srv_button_init(void)
     drv_gpio_set_direction(APP_BUTTON_GPIO, GPIO_MODE_INPUT);
     drv_gpio_set_intr_type(APP_BUTTON_GPIO, GPIO_INTR_ANYEDGE);
     drv_gpio_isr_handler_add(APP_BUTTON_GPIO, button_isr_handler);
+    gpio_install_isr_service(0);
     if(button_queue == NULL) button_queue = xQueueCreate(10, sizeof(int));
     if(button_queue == NULL)
     {

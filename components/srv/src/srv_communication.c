@@ -18,6 +18,8 @@ static const char *TAG = "SRV_COMM";
 static TaskHandle_t door_handle=NULL;
 hmi_cb led_cb = handler_hmi;
 rc522_tag_t *tag = {0};
+uint8_t break_in = 0;
+SemaphoreHandle_t reed_sem = NULL;
 
 static void handler_on_sta_got_ip(void *arg, const char* event_base, int32_t event_id, void *event_data);
 static void mqtt_event_handler(void *handler_args, const char* base, int32_t event_id, void *event_data);
@@ -26,7 +28,10 @@ static void open_door(void *arg);
 static uint8_t check_num_from_gpio(uint8_t num);
 static uint8_t check_num_from_db(uint8_t num);
 static uint8_t check_sensor_from_num(uint8_t num);
+static uint8_t check_compartment_broken_from_gpio(uint8_t num);
 static void split_data(const char* data, int* num, char* locker_name, char *tag_rfid) ;
+static void IRAM_ATTR button_isr_handler(void* arg) ;
+static void invasion_compartment(void *arg);
 
 void srv_comm_init(void)
 {
@@ -69,16 +74,51 @@ void srv_comm_init(void)
     free(ssid);
     free(password);
 
-    drv_gpio_set_direction(32, GPIO_MODE_OUTPUT);
-    drv_gpio_set_direction(33, GPIO_MODE_OUTPUT);
+    drv_gpio_set_direction(APP_COMPARTMENT_1, GPIO_MODE_OUTPUT);
+    drv_gpio_set_direction(APP_COMPARTMENT_2, GPIO_MODE_OUTPUT);
 
-    drv_gpio_set_direction(39, GPIO_MODE_INPUT);
+    drv_gpio_set_direction(APP_SENSOR_1, GPIO_MODE_INPUT);
     // drv_gpio_set_pull(39);
-    drv_gpio_set_direction(36, GPIO_MODE_INPUT);
-    // drv_gpio_set_pull(36);
+    drv_gpio_set_direction(APP_SENSOR_2, GPIO_MODE_INPUT);
+
+    drv_gpio_set_intr_type(APP_SENSOR_1, GPIO_INTR_NEGEDGE);
+    drv_gpio_set_intr_type(APP_SENSOR_2, GPIO_INTR_NEGEDGE);
+    gpio_isr_handler_add(APP_SENSOR_1, button_isr_handler, (void*) APP_SENSOR_1);  
+    gpio_isr_handler_add(APP_SENSOR_2, button_isr_handler, (void*) APP_SENSOR_2);  
+
     led_cb(SRV_LED_FREE_TO_USE,0);
     led_cb(SRV_LED_NO_FREE_DOORS,1);
+    if(reed_sem == NULL) reed_sem = xSemaphoreCreateBinary();
+    xSemaphoreGive(reed_sem);
     return;
+}
+
+static void IRAM_ATTR button_isr_handler(void* arg) 
+{
+    if(break_in != arg)
+    {
+        break_in = arg;
+        ESP_DRAM_LOGI("","Interrupção detectada no botão");
+        if(xSemaphoreTakeFromISR(reed_sem, NULL)) 
+            xTaskCreate(invasion_compartment, "invasion_compartment", 1024*3, NULL, 10, NULL);
+    }
+}
+
+static void invasion_compartment(void *arg)
+{
+    for(;;)
+    {
+        char str[25];
+        char locker_name[20] = "";
+        size_t locker_name_len = sizeof(locker_name);
+        
+        drv_nvs_get_str("storage", LOCKER_NAME_KEY, locker_name, &locker_name_len);
+
+        sprintf(str, "%u:%s", check_num_from_gpio(break_in), locker_name);
+        srv_mqtt_publish("/weird_activity", str, strlen(str));
+        xSemaphoreGive(reed_sem);
+        vTaskDelete(NULL);
+    }
 }
 
 static void handler_on_sta_got_ip(void *arg, const char* event_base, int32_t event_id, void *event_data)
@@ -227,13 +267,21 @@ static uint8_t check_sensor_from_num(uint8_t num)
 
 static uint8_t check_num_from_gpio(uint8_t num)
 {
-    if(num == APP_COMPARTMENT_1)
+    if(num == APP_COMPARTMENT_1 || num == APP_SENSOR_1) 
         return 1;
-    if(num == APP_COMPARTMENT_2)
+    if(num == APP_COMPARTMENT_2 || num == APP_SENSOR_2)
         return 2;
     return 0;
 }
 
+static uint8_t check_compartment_broken_from_gpio(uint8_t num)
+{
+    if(num == APP_SENSOR_1)
+        return 1;
+    if(num == APP_SENSOR_2)
+        return 2;
+    return 0;
+}
 
 static void open_door(void *arg)
 {
