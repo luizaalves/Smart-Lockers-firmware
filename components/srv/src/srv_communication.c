@@ -20,6 +20,7 @@ hmi_cb led_cb = handler_hmi;
 rc522_tag_t *tag = {0};
 uint8_t break_in = 0;
 SemaphoreHandle_t reed_sem = NULL;
+uint16_t state=0;
 
 static void handler_on_sta_got_ip(void *arg, const char* event_base, int32_t event_id, void *event_data);
 static void mqtt_event_handler(void *handler_args, const char* base, int32_t event_id, void *event_data);
@@ -93,12 +94,26 @@ void srv_comm_init(void)
     return;
 }
 
+static bool debounce(uint8_t btn) 
+{
+    state = (state<<1) | !drv_gpio_get_level(btn) | 0xfe00;
+    return (state == 0xfe01);
+}
+
+static bool task_state(void)
+{
+    eTaskState state_task = door_handle != NULL ? eTaskGetState(door_handle): eInvalid;
+    return (state_task!=eBlocked && state_task!= eRunning);
+}
+
 static void IRAM_ATTR button_isr_handler(void* arg) 
 {
-    if(break_in != arg)
+    uint8_t num = arg;
+    if(!drv_gpio_get_level(num)  && break_in != num && task_state() && debounce(num))
     {
-        break_in = arg;
-        ESP_DRAM_LOGI("","Interrupção detectada no botão");
+        state=0;
+        break_in = num;
+        ESP_DRAM_LOGI("","Interrupção detectada no botão: %u", num);
         if(xSemaphoreTakeFromISR(reed_sem, NULL)) 
             xTaskCreate(invasion_compartment, "invasion_compartment", 1024*3, NULL, 10, NULL);
     }
@@ -287,6 +302,9 @@ static void open_door(void *arg)
 {
     uint8_t compartment = arg;
     uint8_t sensor = check_sensor_from_num(compartment);
+    gpio_intr_disable(APP_SENSOR_2);
+    gpio_intr_disable(APP_SENSOR_1);
+    drv_gpio_set_direction(sensor, GPIO_MODE_INPUT);
     state_door state = STATE_WAIT_DOOR_OPEN;
     time_t timestamp = 0;
     time_t timestamp2 = 0;
@@ -336,7 +354,8 @@ static void open_door(void *arg)
                 led_cb(SRV_LED_FREE_TO_USE,1);
                 led_cb(SRV_LED_REMOVE_OBJ,0);
                 led_cb(SRV_LED_STORE_OBJ,0);
-
+                gpio_intr_enable(APP_SENSOR_1);
+                gpio_intr_enable(APP_SENSOR_2);
                 vTaskDelete(NULL);
 
             }
@@ -349,6 +368,7 @@ static void open_door(void *arg)
             //envia via mqtt
 
     }
+    gpio_intr_enable(sensor);
     vTaskDelete(NULL);
 }
 
