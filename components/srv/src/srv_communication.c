@@ -21,6 +21,8 @@ rc522_tag_t *tag = {0};
 uint8_t break_in = 0;
 SemaphoreHandle_t reed_sem = NULL;
 uint16_t state=0;
+bool rfid_requested_open = false;
+static TimerHandle_t rfid_timer; 
 
 static void handler_on_sta_got_ip(void *arg, const char* event_base, int32_t event_id, void *event_data);
 static void mqtt_event_handler(void *handler_args, const char* base, int32_t event_id, void *event_data);
@@ -33,6 +35,8 @@ static uint8_t check_compartment_broken_from_gpio(uint8_t num);
 static void split_data(const char* data, int* num, char* locker_name, char *tag_rfid) ;
 static void IRAM_ATTR button_isr_handler(void* arg) ;
 static void invasion_compartment(void *arg);
+static void rfid_request_open(bool open);
+static void rfid_timer_callback(TimerHandle_t xTimer);
 
 void srv_comm_init(void)
 {
@@ -109,7 +113,7 @@ static bool task_state(void)
 static void IRAM_ATTR button_isr_handler(void* arg) 
 {
     uint8_t num = arg;
-    if(!drv_gpio_get_level(num)  && break_in != num && task_state() && debounce(num))
+    if(!rfid_requested_open && !drv_gpio_get_level(num)  && break_in != num && task_state() && debounce(num))
     {
         state=0;
         break_in = num;
@@ -220,6 +224,7 @@ static void mqtt_event_handler(void *handler_args, const char* base, int32_t eve
                 if((strcmp(tag_received,str)!=0)||(strcmp(locker_name_received, locker_name)!=0)) return;
                 compartment = check_num_from_db(compartment);
                 eTaskState state_task = door_handle != NULL ? eTaskGetState(door_handle): eInvalid;
+                rfid_request_open(true);
                 if(state_task!=eRunning) xTaskCreate(open_door, "open_door", 1024*5, (void *)compartment, 10, &door_handle);
 
             }
@@ -356,8 +361,9 @@ static void open_door(void *arg)
                 led_cb(SRV_LED_STORE_OBJ,0);
                 gpio_intr_enable(APP_SENSOR_1);
                 gpio_intr_enable(APP_SENSOR_2);
+                rfid_timer = xTimerCreate("RFID_Timer", pdMS_TO_TICKS(2000), pdFALSE, (void*)0, rfid_timer_callback);
+                xTimerStart(rfid_timer, 0);
                 vTaskDelete(NULL);
-
             }
             //quando detectar que o ima afastou, começa a contar o tempo
 
@@ -419,4 +425,14 @@ static void split_data(const char* data, int* num, char* locker_name, char *tag_
             }
         }
     }
+}
+
+static void rfid_request_open(bool open) 
+{
+    rfid_requested_open = open;  
+}
+
+static void rfid_timer_callback(TimerHandle_t xTimer) 
+{
+    rfid_requested_open = false; 
 }

@@ -6,7 +6,12 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "time.h"
 
+#define DEBOUNCE_DELAY_MS 10 
+
+uint8_t first_intr = 2;
+unsigned long timestamp_ultimo_acionamento = 0;
 QueueHandle_t button_queue= NULL;
 static int flag = 0;
 static const char *TAG = "srv_button";
@@ -16,6 +21,7 @@ static void IRAM_ATTR button_isr_handler(void* arg);
 static void button_task(void *arg);
 static void config_wifi_ap(void);
 static void handler_on_ap_got_ip(void *arg, const char* event_base, int32_t event_id, void *event_data);
+static bool sensors_detect(void);
 
 void srv_button_init(void)
 {
@@ -32,16 +38,10 @@ void srv_button_init(void)
 
 }
 
-#include "time.h"
-
-#define DEBOUNCE_DELAY_MS 10 
-uint8_t first_intr = 2;
-unsigned long timestamp_ultimo_acionamento = 0;
-
 static void IRAM_ATTR button_isr_handler(void* arg) 
 {
-    if(first_intr == 2 && drv_gpio_get_level(APP_BUTTON_GPIO)==0) first_intr = 0;
-    else if(first_intr ==0 && drv_gpio_get_level(APP_BUTTON_GPIO))
+    if(!sensors_detect() && first_intr == 2 && drv_gpio_get_level(APP_BUTTON_GPIO)==0) first_intr = 0;
+    else if(!sensors_detect() && first_intr ==0 && drv_gpio_get_level(APP_BUTTON_GPIO))
     {
         unsigned long timestamp = clock();
         if(((timestamp - timestamp_ultimo_acionamento)/CLOCKS_PER_SEC) >= DEBOUNCE_DELAY_MS)
@@ -104,4 +104,9 @@ static void handler_on_ap_got_ip(void* arg, esp_event_base_t event_base,
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
         ESP_LOGI(TAG, "WIFI_EVENT_AP_STADISCONNECTED");
     }
+}
+
+static bool sensors_detect(void)
+{
+    return drv_gpio_get_level(APP_SENSOR_1) ||  drv_gpio_get_level(APP_SENSOR_2);
 }
